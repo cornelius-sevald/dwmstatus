@@ -17,9 +17,7 @@
 
 #include <X11/Xlib.h>
 
-char *tzargentina = "America/Buenos_Aires";
-char *tzutc = "UTC";
-char *tzberlin = "Europe/Berlin";
+char *tzcopenhagen = "Europe/Copenhagen";
 
 static Display *dpy;
 
@@ -82,17 +80,6 @@ setstatus(char *str)
 }
 
 char *
-loadavg(void)
-{
-	double avgs[3];
-
-	if (getloadavg(avgs, 3) < 0)
-		return smprintf("");
-
-	return smprintf("%.2f %.2f %.2f", avgs[0], avgs[1], avgs[2]);
-}
-
-char *
 readfile(char *base, char *file)
 {
 	char *path, line[513];
@@ -113,79 +100,11 @@ readfile(char *base, char *file)
 	return smprintf("%s", line);
 }
 
-char *
-getbattery(char *base)
-{
-	char *co, status;
-	int descap, remcap;
-
-	descap = -1;
-	remcap = -1;
-
-	co = readfile(base, "present");
-	if (co == NULL)
-		return smprintf("");
-	if (co[0] != '1') {
-		free(co);
-		return smprintf("not present");
-	}
-	free(co);
-
-	co = readfile(base, "charge_full_design");
-	if (co == NULL) {
-		co = readfile(base, "energy_full_design");
-		if (co == NULL)
-			return smprintf("");
-	}
-	sscanf(co, "%d", &descap);
-	free(co);
-
-	co = readfile(base, "charge_now");
-	if (co == NULL) {
-		co = readfile(base, "energy_now");
-		if (co == NULL)
-			return smprintf("");
-	}
-	sscanf(co, "%d", &remcap);
-	free(co);
-
-	co = readfile(base, "status");
-	if (!strncmp(co, "Discharging", 11)) {
-		status = '-';
-	} else if(!strncmp(co, "Charging", 8)) {
-		status = '+';
-	} else {
-		status = '?';
-	}
-
-	if (remcap < 0 || descap < 0)
-		return smprintf("invalid");
-
-	return smprintf("%.0f%%%c", ((float)remcap / (float)descap) * 100, status);
-}
-
-char *
-gettemperature(char *base, char *sensor)
-{
-	char *co;
-
-	co = readfile(base, sensor);
-	if (co == NULL)
-		return smprintf("");
-	return smprintf("%02.0f°C", atof(co) / 1000);
-}
-
 int
 main(void)
 {
 	char *status;
-	char *avgs;
-	char *bat;
-	char *bat1;
-	char *tmar;
-	char *tmutc;
-	char *tmbln;
-	char *t0, *t1, *t2;
+	char *tmcph;
 
 	if (!(dpy = XOpenDisplay(NULL))) {
 		fprintf(stderr, "dwmstatus: cannot open display.\n");
@@ -193,30 +112,12 @@ main(void)
 	}
 
 	for (;;sleep(60)) {
-		avgs = loadavg();
-		bat = getbattery("/sys/class/power_supply/BAT0");
-		bat1 = getbattery("/sys/class/power_supply/BAT1");
-		tmar = mktimes("%H:%M", tzargentina);
-		tmutc = mktimes("%H:%M", tzutc);
-		tmbln = mktimes("KW %W %a %d %b %H:%M %Z %Y", tzberlin);
-		t0 = gettemperature("/sys/devices/virtual/hwmon/hwmon0", "temp1_input");
-		t1 = gettemperature("/sys/devices/virtual/hwmon/hwmon2", "temp1_input");
-		t2 = gettemperature("/sys/devices/virtual/hwmon/hwmon4", "temp1_input");
+		tmcph = mktimes("%a %d %b %H:%M %Y", tzcopenhagen);
 
-		status = smprintf("T:%s|%s|%s L:%s B:%s|%s A:%s U:%s %s",
-				t0, t1, t2, avgs, bat, bat1, tmar, tmutc,
-				tmbln);
+		status = smprintf("%s", tmcph);
 		setstatus(status);
 
-		free(t0);
-		free(t1);
-		free(t2);
-		free(avgs);
-		free(bat);
-		free(bat1);
-		free(tmar);
-		free(tmutc);
-		free(tmbln);
+		free(tmcph);
 		free(status);
 	}
 
