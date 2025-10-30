@@ -1,5 +1,5 @@
 NAME = dwmstatus
-VERSION = 1.0c0.1
+VERSION = 1.0c1.1
 
 # Customize below to fit your system
 
@@ -12,7 +12,7 @@ X11LIB = /usr/X11R6/lib
 
 # includes and libs
 INCS = -I. -I/usr/include -I${X11INC}
-LIBS = -L/usr/lib -lc -L${X11LIB} -lX11
+LIBS = -L/usr/lib -lc -L${X11LIB} -lX11 -lpthread
 
 # flags
 CPPFLAGS = -DVERSION=\"${VERSION}\" -D_DEFAULT_SOURCE
