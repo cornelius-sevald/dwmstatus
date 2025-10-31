@@ -27,7 +27,15 @@ char *tzcopenhagen = "Europe/Copenhagen";
 
 static Display *dpy;
 
-static char* song_title = "";
+struct {
+	char *buf;
+	pthread_mutex_t mutex;
+} status;
+
+struct {
+	char buf[SONG_TITLE_LEN];
+	pthread_mutex_t mutex;
+} song_title;
 
 char *
 smprintf(char *fmt, ...)
@@ -82,23 +90,27 @@ mktimes(char *fmt, char *tzname)
 void
 setstatus()
 {
-	char *status;
-	char *tmcph;
+	pthread_mutex_lock(&status.mutex);
 
+	char *tmcph;
 	tmcph = mktimes("%a %d %b %H:%M %Y", tzcopenhagen);
 
-	status = smprintf(
+	pthread_mutex_lock(&song_title.mutex);
+	status.buf = smprintf(
 		"%s%s%s",
-		song_title,
-		song_title[0] ? "   " : "",
+		song_title.buf,
+		song_title.buf[0] ? "   " : "",
 		tmcph
 	);
+	pthread_mutex_unlock(&song_title.mutex);
 
-	XStoreName(dpy, DefaultRootWindow(dpy), status);
+	XStoreName(dpy, DefaultRootWindow(dpy), status.buf);
 	XSync(dpy, False);
 
 	free(tmcph);
-	free(status);
+	free(status.buf);
+
+	pthread_mutex_unlock(&status.mutex);
 }
 
 char *
@@ -137,6 +149,12 @@ currently_playing(void *_arg)
 	int wstatus;
 	// PID of forked child process (cpid), and return value of `waitpid` (w)
 	pid_t cpid, w;
+
+	bool no_song_title = true;
+
+	// We wait one second for the MPD server to start up,
+	// otherwise this will immediately fail and then wait 60 seconds...
+	sleep(1);
 
 	// continually try to get the status of the current song.
 	while(true) {
@@ -178,7 +196,7 @@ currently_playing(void *_arg)
 			args[0] = cmd;
 			// If we have no current song loaded,
 			// we remove the '--wait' parameter.
-			if (!song_title[0]) {
+			if (no_song_title) {
 				args[3] = NULL;
 			}
 
@@ -213,10 +231,14 @@ currently_playing(void *_arg)
 				goto songerr;
 			}
 
-			static char buf[128] = {0};
-			if (read(pipefd[0], &buf, 128-1) == -1) {
+			char buf[SONG_TITLE_LEN] = {0};
+			int ret;
+			if ((ret = read(pipefd[0], &buf, SONG_TITLE_LEN-1)) == -1) {
 				perror("read");
 				goto songerr;
+			}
+			if (ret > 0) {
+				no_song_title = false;
 			}
 
 			// close now unused read end of pipe
@@ -231,7 +253,10 @@ currently_playing(void *_arg)
 					break;
 				}
 			}
-			song_title = buf;
+
+			pthread_mutex_lock(&song_title.mutex);
+			memcpy(song_title.buf, buf, SONG_TITLE_LEN);
+			pthread_mutex_unlock(&song_title.mutex);
 
 			setstatus();
 		}
@@ -240,7 +265,15 @@ currently_playing(void *_arg)
 		if (0) {
 songerr:
 			fprintf(stderr, "Error getting song status. Retrying in 60 seconds...\n");
-			song_title = "";
+
+			pthread_mutex_lock(&song_title.mutex);
+			song_title.buf[0] = '\0';
+			pthread_mutex_unlock(&song_title.mutex);
+
+			setstatus();
+
+			no_song_title = true;
+
 			sleep(60);
 		}
 	}
@@ -253,6 +286,9 @@ main(void)
 		fprintf(stderr, "dwmstatus: cannot open display.\n");
 		return 1;
 	}
+
+	pthread_mutex_init(&status.mutex, 0);
+	pthread_mutex_init(&song_title.mutex, 0);
 	
 	int s;
 	pthread_t music_thread_id;
